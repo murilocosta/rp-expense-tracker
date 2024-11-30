@@ -1,0 +1,75 @@
+name: expense_tracker
+services:
+  application:
+    build:
+      context: ./
+    environment:
+      SECRET_KEY: ${SECRET_KEY}
+      MYSQL_HOST: application_database
+      MYSQL_PORT: ${MYSQL_PORT}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      REDIS_URL: "redis://application_cache:6379"
+    ports:
+      - "8000:8000"
+    networks:
+      - shared_vpc
+    logging:
+      driver: loki
+      options:
+        loki-url: http://127.0.0.1:3100/loki/api/v1/push
+        loki-external-labels: job=docker,owner=expense_tracker,environment=development
+
+  application_database:
+    image: bitnami/mariadb:11.5.2
+    environment:
+      MARIADB_ROOT_USER: ${MYSQL_USER}
+      MARIADB_ROOT_PASSWORD: ${MYSQL_PASSWORD}
+      MARIADB_DATABASE: expense_tracker
+    ports:
+      - "3306:3306"
+    networks:
+      - shared_vpc
+  
+  application_cache:
+    image: bitnami/redis:7.4.1
+    environment:
+      ALLOW_EMPTY_PASSWORD: yes
+    ports:
+      - "6379:6379"
+    networks:
+      - shared_vpc
+  
+  grafana_loki:
+    image: grafana/loki:2.9.2
+    ports:
+      - "3100:3100"
+    volumes:
+      - "./logging/loki-config.yml:/etc/loki/local-config.yaml"
+    networks:
+      - shared_vpc
+
+  grafana_promtail:
+    image: grafana/promtail:2.9.2
+    volumes:
+      - "./logging/promtail-config.yml:/etc/promtail/config.yml"
+    networks:
+      - shared_vpc
+
+  grafana_ui:
+    image: grafana/grafana:10.4.12
+    environment:
+      GF_PATHS_PROVISIONING: "/etc/grafana/provisioning"
+      GF_AUTH_ANONYMOUS_ENABLED: true
+      GF_AUTH_ANONYMOUS_ORG_ROLE: "Admin"
+    volumes:
+      - "./logging/datasource.yml:/etc/grafana/provisioning/datasources/datasource.yaml"
+    ports:
+      - "3000:3000"
+    networks:
+      - shared_vpc
+
+networks:
+  shared_vpc:
+    driver: bridge
